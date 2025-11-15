@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    >
+
+    <com.example.rangefinder.AutoFitTextureView
+        android:id="@+id/cameraView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:adjustViewBounds="true"
+        />
+
+    <Button
+        android:id="@+id/flashButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/flashlight"
+        android:layout_marginBottom="70dp"
+        android:textSize="17sp"
+        android:layout_gravity="bottom|center_horizontal"
+        />
+
+    <View
+        android:id="@+id/focusCircle"
+        android:layout_width="70dp"
+        android:layout_height="70dp"
+        android:layout_gravity="center"
+        android:background="@drawable/focus_circle"
+        android:alpha="0.7"
+        />
+
+    <TextView
+        android:id="@+id/distanceTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/distance"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="70dp"
+        />
+
+</FrameLayout>
