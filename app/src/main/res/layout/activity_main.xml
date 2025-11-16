@@ -34,6 +34,15 @@
         android:alpha="0.7"
         />
 
+    <View
+        android:id="@+id/focusRectangle"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_gravity="center"
+        android:background="@drawable/focus_rectangle"
+        android:alpha="0"
+        />
+
     <TextView
         android:id="@+id/distanceTextView"
         android:layout_width="wrap_content"

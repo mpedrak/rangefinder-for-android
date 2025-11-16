@@ -12,6 +12,7 @@ import android.util.Log
 import android.util.Size
 import android.view.Surface
 import android.view.TextureView
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
@@ -39,6 +40,7 @@ class MainActivity : AppCompatActivity()
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
     private lateinit var cameraManager: CameraManager
+    private lateinit var focusRectangle: View
 
 
     override fun onCreate(savedInstanceState: Bundle?)
@@ -54,8 +56,11 @@ class MainActivity : AppCompatActivity()
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
         cameraView.surfaceTextureListener = surfaceTextureListener
+        cameraView.setOnClickListener { triggerCenterAutoFocus() }
         flashButton = findViewById(R.id.flashButton)
         flashButton.setOnClickListener { toggleFlash() }
+
+        focusRectangle = findViewById(R.id.focusRectangle)
     }
 
     private fun hideStatusBar()
@@ -74,7 +79,6 @@ class MainActivity : AppCompatActivity()
         if (cameraView.isAvailable)
         {
             openCameraIfPermitted(cameraView.width, cameraView.height)
-            cameraView.setOnClickListener { triggerCenterAutoFocus() }
         }
     }
 
@@ -119,6 +123,12 @@ class MainActivity : AppCompatActivity()
     {
         override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int)
         {
+            // Set focusRectangle's width and height
+            val params = focusRectangle.layoutParams
+            params.width = width / 5
+            params.height = height / 5
+            focusRectangle.layoutParams = params
+
             configureTransform(width, height)
             openCameraIfPermitted(width, height)
         }
@@ -306,8 +316,9 @@ class MainActivity : AppCompatActivity()
     private fun triggerCenterAutoFocus() {
         try {
             val session = captureSession ?: return
-            val builder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW) ?: return
-            builder.addTarget(Surface(cameraView.surfaceTexture))
+//            val builder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW) ?: return
+//            builder.addTarget(Surface(cameraView.surfaceTexture))
+            val builder = previewRequestBuilder ?: return
 
             val cameraId = cameraManager.cameraIdList[0]
             val characteristics = cameraManager.getCameraCharacteristics(cameraId)
@@ -331,6 +342,12 @@ class MainActivity : AppCompatActivity()
 
             builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START)
 
+            // Show focus rectangle
+            runOnUiThread {
+                focusRectangle.animate().cancel()
+                focusRectangle.alpha = 1f
+            }
+
             session.capture(builder.build(), object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(
                     session: CameraCaptureSession,
@@ -339,11 +356,24 @@ class MainActivity : AppCompatActivity()
                 ) {
                     super.onCaptureCompleted(session, request, result)
 
-                    previewRequestBuilder?.set(
-                        CaptureRequest.CONTROL_AF_MODE,
-                        CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-                    )
-                    session.setRepeatingRequest(previewRequestBuilder!!.build(), captureCallback, backgroundHandler)
+                    // Hide focus rectangle
+                    runOnUiThread {
+                        focusRectangle.animate()
+                            .alpha(0f)
+                            .setStartDelay(100)
+                            .setDuration(500)
+                            .start()
+                    }
+
+//                    previewRequestBuilder?.set(
+//                        CaptureRequest.CONTROL_AF_MODE,
+//                        CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+//                    )
+//                    session.setRepeatingRequest(previewRequestBuilder!!.build(), captureCallback, backgroundHandler)
+                    builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                    builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE)
+                    session.setRepeatingRequest(builder.build(), captureCallback, backgroundHandler)
+
                 }
             }, backgroundHandler)
 
@@ -353,8 +383,7 @@ class MainActivity : AppCompatActivity()
     }
 
 
-    private val captureCallback = object : CameraCaptureSession.CaptureCallback()
-    {
+    private val captureCallback = object : CameraCaptureSession.CaptureCallback() {
         override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult)
         {
             super.onCaptureCompleted(session, request, result)
