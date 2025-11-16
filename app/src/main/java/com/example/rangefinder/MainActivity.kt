@@ -16,6 +16,9 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : AppCompatActivity()
 {
@@ -43,6 +46,9 @@ class MainActivity : AppCompatActivity()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        supportActionBar?.hide()
+        hideStatusBar()
+
         cameraView = findViewById(R.id.cameraView)
         distanceTextView = findViewById(R.id.distanceTextView)
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -50,6 +56,33 @@ class MainActivity : AppCompatActivity()
         cameraView.surfaceTextureListener = surfaceTextureListener
         flashButton = findViewById(R.id.flashButton)
         flashButton.setOnClickListener { toggleFlash() }
+    }
+
+    private fun hideStatusBar()
+    {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.statusBars())
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+
+    override fun onResume()
+    {
+        super.onResume()
+        hideStatusBar()
+        startBackgroundThread()
+        if (cameraView.isAvailable)
+        {
+            openCameraIfPermitted(cameraView.width, cameraView.height)
+            cameraView.setOnClickListener { triggerCenterAutoFocus() }
+        }
+    }
+
+
+    override fun onWindowFocusChanged(hasFocus: Boolean)
+    {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideStatusBar()
     }
 
     private fun toggleFlash()
@@ -98,16 +131,6 @@ class MainActivity : AppCompatActivity()
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
     }
 
-    override fun onResume()
-    {
-        super.onResume()
-        startBackgroundThread()
-        if (cameraView.isAvailable) {
-            openCameraIfPermitted(cameraView.width, cameraView.height)
-            cameraView.setOnClickListener { triggerCenterAutoFocus() }
-        }
-    }
-
     override fun onPause()
     {
         closeCamera()
@@ -143,24 +166,28 @@ class MainActivity : AppCompatActivity()
     }
     private fun configureTransform(viewWidth: Int, viewHeight: Int)
     {
-        val matrix = android.graphics.Matrix()
         val rotation = windowManager.defaultDisplay.rotation
+        val matrix = android.graphics.Matrix()
+
         val centerX = viewWidth / 2f
         val centerY = viewHeight / 2f
 
-        val textureRect = android.graphics.RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
-        val bufferRect = android.graphics.RectF(0f, 0f, viewHeight.toFloat(), viewWidth.toFloat())
 
-        val scale: Float
-        if (rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270) {
-            bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY())
-            matrix.setRectToRect(textureRect, bufferRect, android.graphics.Matrix.ScaleToFit.FILL)
-            scale = (viewHeight.toFloat() / viewWidth).coerceAtLeast(viewWidth.toFloat() / viewHeight)
+        if (rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270)
+        {
+            val scale = maxOf(
+                viewHeight.toFloat() / viewWidth.toFloat(),
+                viewWidth.toFloat() / viewHeight.toFloat()
+            )
+
             matrix.postScale(scale, scale, centerX, centerY)
-            matrix.postRotate(90 * (rotation - 2).toFloat(), centerX, centerY)
-        } else if (rotation == Surface.ROTATION_180) {
+            matrix.postRotate(90f * (rotation - 2), centerX, centerY)
+        }
+        else if (rotation == Surface.ROTATION_180)
+        {
             matrix.postRotate(180f, centerX, centerY)
         }
+
         cameraView.setTransform(matrix)
     }
 
