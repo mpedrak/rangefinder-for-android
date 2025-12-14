@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.util.TypedValue
 import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -68,6 +69,19 @@ class MeasurementStorage(private val context: Context) {
     private fun addDistanceLabel(bitmap: Bitmap, distanceLabel: String): Bitmap {
         val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(mutableBitmap)
+        
+        val circleRadius = bitmap.height * 0.065f
+        
+        val centerX = bitmap.width / 2f
+        val centerY = bitmap.height / 2f
+        val circlePaint = Paint().apply {
+            color = Color.parseColor("#FF00FF00")
+            style = Paint.Style.STROKE
+            strokeWidth = maxOf(1f, bitmap.height * 0.001f)
+            isAntiAlias = true
+            alpha = (255 * 0.7).toInt()
+        }
+        canvas.drawCircle(centerX, centerY, circleRadius, circlePaint)
         
         val textPaint = Paint().apply {
             color = Color.WHITE
