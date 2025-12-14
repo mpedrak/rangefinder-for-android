@@ -267,6 +267,7 @@ class SavedImagesActivity : AppCompatActivity() {
             fun bind(item: RangefinderMeasurement) {
                 distanceView.text = item.distanceLabel
                 dateView.text = item.getFormattedDate()
+                cardLayout.setOnClickListener { showFullImage(item) }
                 deleteButton.setOnClickListener { showDeleteConfirmation(item) }
                 
                 imageView.setImageBitmap(
@@ -287,6 +288,57 @@ class SavedImagesActivity : AppCompatActivity() {
                 storage.deleteMeasurement(measurement.id)
                 loadMeasurements()
             }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun showFullImage(measurement: RangefinderMeasurement) {
+        Log.d("SavedImagesActivity", "Showing full image: ${measurement.imagePath}")
+
+        val bitmap = BitmapFactory.decodeFile(measurement.imagePath)
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val context = this
+        
+        val layout = FrameLayout(context).apply {
+            setBackgroundColor(context.color(R.color.background_black))
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        val imageView = ImageView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setImageBitmap(bitmap)
+            adjustViewBounds = true
+            setBackgroundColor(context.color(R.color.background_black))
+        }
+        layout.addView(imageView)
+
+        val closeButton = Button(context).apply {
+            text = "CLOSE"
+            textSize = 14f
+            setTextColor(context.color(R.color.text_primary))
+            setBackgroundColor(context.color(R.color.overlay_semi_transparent))
+            setPadding(72, 36, 72, 36)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                setMargins(48, 144, 48, 48)
+            }
+            setOnClickListener { dialog.dismiss() }
+        }
+        layout.addView(closeButton)
+        dialog.setContentView(layout)
+        dialog.show()
+
+        dialog.window?.setBackgroundDrawableResource(android.R.color.black)
+
+        imageView.post {
+            imageView.invalidate()
+            imageView.requestLayout()
+        }
     }
 
     override fun onResume() {
