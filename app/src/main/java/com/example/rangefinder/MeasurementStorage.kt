@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileOutputStream
@@ -72,5 +73,15 @@ class MeasurementStorage(private val context: Context) {
     fun deleteMeasurement(id: String) = runBlocking {
         dao.getById(id)?.let { File(it.imagePath).delete() }
         dao.deleteById(id)
+    }
+
+    fun getMeasurementsSortedByDistance(ascending: Boolean = true) = runBlocking {
+        (if (ascending) dao.getAllByDistanceAscending() else dao.getAllByDistanceDescending())
+            .first().map { it.toRangefinderMeasurement() }
+    }
+
+    fun getMeasurementsSortedByDate(newestFirst: Boolean = true) = runBlocking {
+        (if (newestFirst) dao.getAllByDateDescending() else dao.getAllByDateAscending())
+            .first().map { it.toRangefinderMeasurement() }
     }
 }

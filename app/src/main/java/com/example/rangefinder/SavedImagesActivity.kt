@@ -21,7 +21,16 @@ class SavedImagesActivity : AppCompatActivity() {
     private lateinit var storage: MeasurementStorage
     private lateinit var listView: ListView
     private lateinit var emptyView: TextView
+    private lateinit var sortSpinner: Spinner
     private lateinit var backButton: Button
+
+    private var currentSortMode = SortMode.DATE_NEWEST
+
+    enum class SortMode(val label: String) {
+        DATE_NEWEST("Date (Newest)"), DATE_OLDEST("Date (Oldest)"), DISTANCE_NEAREST("Distance (Nearest)"), DISTANCE_FARTHEST(
+            "Distance (Farthest)"
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,6 +101,50 @@ class SavedImagesActivity : AppCompatActivity() {
 
         rootLayout.addView(headerLayout)
 
+        val sortLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(48, 24, 48, 48)
+            }
+        }
+
+        val sortLabel = TextView(context).apply {
+            text = "Sort by: "
+            textSize = 16f
+            setTextColor(context.color(R.color.text_secondary))
+        }
+        sortLayout.addView(sortLabel)
+
+        sortSpinner = Spinner(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            setBackgroundColor(context.color(R.color.background_button))
+            setPadding(36, 24, 36, 24)
+        }
+
+        val sortAdapter = ArrayAdapter(
+            context, android.R.layout.simple_spinner_item, SortMode.entries.map { it.label }).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        sortSpinner.adapter = sortAdapter
+        sortSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?, view: View?, position: Int, id: Long
+            ) {
+                currentSortMode = SortMode.entries.toTypedArray()[position]
+                loadMeasurements()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        sortLayout.addView(sortSpinner)
+
+        rootLayout.addView(sortLayout)
+
         listView = ListView(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
@@ -135,7 +188,27 @@ class SavedImagesActivity : AppCompatActivity() {
     }
 
     private fun loadMeasurements() {
-        val measurements = storage.getAllMeasurements()
+        val allMeasurements = storage.getAllMeasurements()
+        Log.d(
+            "SavedImagesActivity", "Total measurements loaded: ${allMeasurements.size}"
+        )
+
+        val measurements = when (currentSortMode) {
+            SortMode.DATE_NEWEST -> storage.getMeasurementsSortedByDate(newestFirst = true)
+            SortMode.DATE_OLDEST -> storage.getMeasurementsSortedByDate(newestFirst = false)
+            SortMode.DISTANCE_NEAREST -> storage.getMeasurementsSortedByDistance(ascending = true)
+            SortMode.DISTANCE_FARTHEST -> storage.getMeasurementsSortedByDistance(ascending = false)
+        }
+
+        Log.d(
+            "SavedImagesActivity", "Measurements after sorting: ${measurements.size}"
+        )
+        measurements.forEach { m ->
+            Log.d(
+                "SavedImagesActivity",
+                "Measurement: ${m.id}, path: ${m.imagePath}, exists: ${File(m.imagePath).exists()}"
+            )
+        }
 
         if (measurements.isEmpty()) {
             listView.visibility = View.GONE
