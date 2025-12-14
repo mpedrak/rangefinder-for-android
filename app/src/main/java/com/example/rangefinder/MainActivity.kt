@@ -6,10 +6,10 @@ import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.hardware.camera2.params.MeteringRectangle
+import android.hardware.camera2.params.OutputConfiguration
+import android.hardware.camera2.params.SessionConfiguration
 import android.os.*
 import androidx.appcompat.app.AppCompatActivity
-import android.util.Log
-import android.util.Size
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
@@ -23,6 +23,15 @@ import androidx.core.view.WindowInsetsControllerCompat
 import kotlin.math.roundToInt
 import android.widget.LinearLayout
 import android.graphics.Rect
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.Image
+import android.media.ImageReader
+import android.util.Log
+import android.util.Size
+import android.widget.Toast
+import java.nio.ByteBuffer
 
 class MainActivity : AppCompatActivity()
 {
@@ -34,6 +43,8 @@ class MainActivity : AppCompatActivity()
     }
 
     private lateinit var flashButton: Button
+    private lateinit var saveButton: Button
+    private lateinit var viewSavedButton: Button
     private var isFlashOn = false
     private lateinit var cameraView: AutoFitTextureView
     private lateinit var distanceTextView: TextView
@@ -51,9 +62,15 @@ class MainActivity : AppCompatActivity()
     private var currentCameraId: String? = null
     private var activeCameraId: String? = null
     private var sensorActiveArray: Rect? = null
+
     private enum class CameraMode { WIDE, UW, ZOOM }
+
     private var currentMode: CameraMode = CameraMode.WIDE
     private var logicalBackPhysicalCount: Int = 1
+    private var currentDistance: Float? = null
+    private var currentDistanceLabel: String = "DISTANCE: -"
+    private lateinit var storage: MeasurementStorage
+    private var imageReader: ImageReader? = null
 
 
     override fun onCreate(savedInstanceState: Bundle?)
@@ -67,10 +84,13 @@ class MainActivity : AppCompatActivity()
         cameraView = findViewById(R.id.cameraView)
         distanceTextView = findViewById(R.id.distanceTextView)
         flashButton = findViewById(R.id.flashButton)
+        saveButton = findViewById(R.id.saveButton)
+        viewSavedButton = findViewById(R.id.viewSavedButton)
         focusRectangle = findViewById(R.id.focusRectangle)
         cameraButtonsContainer = findViewById(R.id.cameraButtonsContainer)
         zoomButtonsContainer = findViewById(R.id.zoomButtonsContainer)
 
+        storage = MeasurementStorage(this)
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
         detectBackCameras()
@@ -86,6 +106,10 @@ class MainActivity : AppCompatActivity()
         cameraView.surfaceTextureListener = surfaceTextureListener
         cameraView.setOnClickListener { triggerCenterAutoFocus() }
         flashButton.setOnClickListener { toggleFlash() }
+        saveButton.setOnClickListener { captureAndSave() }
+        viewSavedButton.setOnClickListener {
+            startActivity(Intent(this, SavedImagesActivity::class.java))
+        }
     }
 
     private fun hideStatusBar()
@@ -511,6 +535,24 @@ class MainActivity : AppCompatActivity()
             texture.setDefaultBufferSize(cameraView.width, cameraView.height)
             val surface = Surface(texture)
 
+            // Setup ImageReader for still image capture
+            val cameraId = activeCameraId ?: return
+            val cameraCharacteristics = cameraManager.getCameraCharacteristics(cameraId)
+            val streamConfigMap =
+                cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val largestSize = streamConfigMap?.getOutputSizes(android.graphics.ImageFormat.JPEG)
+                ?.maxByOrNull { it.width * it.height }
+                ?: Size(1920, 1080)
+
+            // Use maxImages=2 to allow for buffering and prevent "Unable to acquire buffer" errors
+            imageReader = ImageReader.newInstance(
+                largestSize.width,
+                largestSize.height,
+                android.graphics.ImageFormat.JPEG,
+                2
+            )
+            imageReader?.setOnImageAvailableListener(imageAvailableListener, backgroundHandler)
+
             previewRequestBuilder =
                 cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
             previewRequestBuilder?.addTarget(surface)
@@ -520,8 +562,6 @@ class MainActivity : AppCompatActivity()
                 CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
             )
 
-            val cameraId = activeCameraId ?: return
-            val cameraCharacteristics = cameraManager.getCameraCharacteristics(cameraId)
             val sensorArraySize =
                 cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)!!
             sensorActiveArray = sensorArraySize
@@ -545,8 +585,14 @@ class MainActivity : AppCompatActivity()
                 CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
             )
 
-            cameraDevice?.createCaptureSession(
-                listOf(surface),
+            val outputConfigs = mutableListOf<OutputConfiguration>()
+            outputConfigs.add(OutputConfiguration(surface))
+            imageReader?.surface?.let { outputConfigs.add(OutputConfiguration(it)) }
+
+            val sessionConfig = SessionConfiguration(
+                SessionConfiguration.SESSION_REGULAR,
+                outputConfigs,
+                ContextCompat.getMainExecutor(this),
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         captureSession = session
@@ -561,9 +607,10 @@ class MainActivity : AppCompatActivity()
                     override fun onConfigureFailed(session: CameraCaptureSession) {
                         distanceTextView.text = "Couldn't configure camera view"
                     }
-                },
-                backgroundHandler
+                }
             )
+
+            cameraDevice?.createCaptureSession(sessionConfig)
         } catch (e: CameraAccessException) {
             Log.e(TAG, "createPreviewSession err: ${e.message}")
         }
@@ -695,10 +742,13 @@ class MainActivity : AppCompatActivity()
             runOnUiThread {
                 if (focusDistance != null && focusDistance > 0) {
                     val distance = 1f / focusDistance
-                    distanceTextView.text = String.format("DISTANCE: %.2f m", distance)
-                } else
-                {
-                    distanceTextView.text = "DISTANCE: ∞"
+                    currentDistance = distance
+                    currentDistanceLabel = String.format("DISTANCE: %.2f m", distance)
+                    distanceTextView.text = currentDistanceLabel
+                } else {
+                    currentDistance = null
+                    currentDistanceLabel = "DISTANCE: ∞"
+                    distanceTextView.text = currentDistanceLabel
                 }
             }
         }
@@ -735,10 +785,189 @@ class MainActivity : AppCompatActivity()
         }
     }
 
-    private fun closeCamera()
-    {
+    private var isCapturing = false
+
+    private fun captureAndSave() {
+        if (isCapturing) return
+
+        val session = captureSession ?: run {
+            Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val builder = previewRequestBuilder ?: run {
+            Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val reader = imageReader ?: run {
+            Toast.makeText(this, "Image capture not initialized", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            isCapturing = true
+            saveButton.isEnabled = false
+            saveButton.text = "SAVING..."
+
+            val captureBuilder =
+                cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+                    ?: run {
+                        resetSaveButton()
+                        Toast.makeText(this, "Failed to create capture request", Toast.LENGTH_SHORT)
+                            .show()
+                        return
+                    }
+
+            captureBuilder.addTarget(reader.surface)
+            captureBuilder.set(
+                CaptureRequest.CONTROL_AF_MODE,
+                builder.get(CaptureRequest.CONTROL_AF_MODE)
+            )
+            captureBuilder.set(
+                CaptureRequest.CONTROL_AF_REGIONS,
+                builder.get(CaptureRequest.CONTROL_AF_REGIONS)
+            )
+            captureBuilder.set(
+                CaptureRequest.SCALER_CROP_REGION,
+                builder.get(CaptureRequest.SCALER_CROP_REGION)
+            )
+            if (isFlashOn) captureBuilder.set(
+                CaptureRequest.FLASH_MODE,
+                CaptureRequest.FLASH_MODE_SINGLE
+            )
+
+            val rotation = windowManager.defaultDisplay.rotation
+            val characteristics = cameraManager.getCameraCharacteristics(activeCameraId!!)
+            val sensorOrientation =
+                characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+            captureBuilder.set(
+                CaptureRequest.JPEG_ORIENTATION,
+                (sensorOrientation + rotation * 90 + 360) % 360
+            )
+
+            session.capture(
+                captureBuilder.build(),
+                object : CameraCaptureSession.CaptureCallback() {
+                    override fun onCaptureFailed(
+                        session: CameraCaptureSession,
+                        request: CaptureRequest,
+                        failure: android.hardware.camera2.CaptureFailure
+                    ) {
+                        super.onCaptureFailed(session, request, failure)
+                        runOnUiThread {
+                            resetSaveButton()
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Failed to capture image",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                },
+                backgroundHandler
+            )
+
+        } catch (e: CameraAccessException) {
+            Log.e(TAG, "captureAndSave error: ${e.message}")
+            resetSaveButton()
+            Toast.makeText(this, "Failed to capture image", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun resetSaveButton() {
+        isCapturing = false
+        saveButton.isEnabled = true
+        saveButton.text = "SAVE"
+    }
+
+    private val imageAvailableListener = ImageReader.OnImageAvailableListener { reader ->
+        if (!isCapturing) {
+            val image = reader.acquireLatestImage()
+            image?.close()
+            return@OnImageAvailableListener
+        }
+
+        val image = try {
+            reader.acquireLatestImage()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire image from ImageReader: ${e.message}")
+            runOnUiThread {
+                isCapturing = false
+                saveButton.isEnabled = true
+                saveButton.text = "SAVE"
+                Toast.makeText(this@MainActivity, "Failed to acquire image", Toast.LENGTH_SHORT)
+                    .show()
+            }
+            return@OnImageAvailableListener
+        } ?: run {
+            Log.e(TAG, "ImageReader returned null image")
+            runOnUiThread {
+                isCapturing = false
+                saveButton.isEnabled = true
+                saveButton.text = "SAVE"
+            }
+            return@OnImageAvailableListener
+        }
+
+        try {
+            val buffer: ByteBuffer = image.planes[0].buffer
+            val bytes = ByteArray(buffer.remaining())
+            buffer.get(bytes)
+
+            Log.d(TAG, "Image captured, size: ${bytes.size} bytes")
+
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+
+            if (bitmap == null) {
+                Log.e(TAG, "Failed to decode bitmap from image bytes")
+                runOnUiThread {
+                    isCapturing = false
+                    saveButton.isEnabled = true
+                    saveButton.text = "SAVE"
+                    Toast.makeText(this@MainActivity, "Failed to decode image", Toast.LENGTH_SHORT)
+                        .show()
+                }
+                return@OnImageAvailableListener
+            }
+
+            Log.d(TAG, "Bitmap decoded successfully: ${bitmap.width}x${bitmap.height}")
+
+            val measurement = storage.saveMeasurement(
+                bitmap = bitmap,
+                distance = currentDistance,
+                distanceLabel = currentDistanceLabel,
+                cameraMode = ""
+            )
+
+            Log.d(TAG, "Measurement saved: ${measurement.id}, path: ${measurement.imagePath}")
+
+            runOnUiThread {
+                isCapturing = false
+                saveButton.isEnabled = true
+                saveButton.text = "SAVE"
+                Toast.makeText(this@MainActivity, "Measurement saved!", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing image: ${e.message}", e)
+            runOnUiThread {
+                isCapturing = false
+                saveButton.isEnabled = true
+                saveButton.text = "SAVE"
+                Toast.makeText(
+                    this@MainActivity,
+                    "Error saving image: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        } finally {
+            image.close()
+        }
+    }
+
+    private fun closeCamera() {
         captureSession?.close()
         captureSession = null
+        imageReader?.close()
+        imageReader = null
         cameraDevice?.close()
         cameraDevice = null
         activeCameraId = null
