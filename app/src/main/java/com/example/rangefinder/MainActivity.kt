@@ -212,8 +212,8 @@ class MainActivity : AppCompatActivity()
             val uwButton = Button(this).apply {
                 text = "UW"
                 textSize = 17f
-                setTextColor(android.graphics.Color.WHITE)
-                setBackgroundColor(0x66FFFFFF)
+                setTextColor(color(R.color.text_primary))
+                setBackgroundColor(color(R.color.overlay_button_background))
                 setPadding(20, 20, 20, 20)
                 minWidth = 150
                 minHeight = 0
@@ -240,8 +240,8 @@ class MainActivity : AppCompatActivity()
         val wideButton = Button(this).apply {
             text = "W"
             textSize = 17f
-            setTextColor(android.graphics.Color.WHITE)
-            setBackgroundColor(0x66FFFFFF)
+            setTextColor(color(R.color.text_primary))
+            setBackgroundColor(color(R.color.overlay_button_background))
             setPadding(20, 20, 20, 20)
             minWidth = 150
             minHeight = 0
@@ -270,8 +270,8 @@ class MainActivity : AppCompatActivity()
             val ZOOMButton = Button(this).apply {
                 text = "ZOOM"
                 textSize = 17f
-                setTextColor(android.graphics.Color.WHITE)
-                setBackgroundColor(0x66FFFFFF)
+                setTextColor(color(R.color.text_primary))
+                setBackgroundColor(color(R.color.overlay_button_background))
                 setPadding(20, 20, 20, 20)
                 minWidth = 150
                 minHeight = 0
@@ -332,9 +332,8 @@ class MainActivity : AppCompatActivity()
             val button = Button(this).apply {
                 text = label
                 textSize = 17f
-
-                setTextColor(android.graphics.Color.WHITE)
-                setBackgroundColor(0x33FFFFFF)
+                setTextColor(color(R.color.text_primary))
+                setBackgroundColor(color(R.color.overlay_zoom_button_background))
                 setPadding(20, 20, 20, 20)
                 minWidth = 150
                 minHeight = 0
