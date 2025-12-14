@@ -2,10 +2,12 @@ package com.example.rangefinder
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -17,13 +19,42 @@ class MeasurementStorage(private val context: Context) {
     private val imagesDir = File(context.filesDir, "rangefinder_images").apply { mkdirs() }
 
     fun saveMeasurement(
-        bitmap: Bitmap, distance: Float?, distanceLabel: String, cameraMode: String
+        jpegBytes: ByteArray, distance: Float?, distanceLabel: String, cameraMode: String
     ): RangefinderMeasurement = runBlocking {
         val id = UUID.randomUUID().toString()
         val imageFile = File(imagesDir, "$id.jpg")
         
-        addDistanceLabel(bitmap, distanceLabel).compress(Bitmap.CompressFormat.JPEG, 95, 
-            FileOutputStream(imageFile))
+        val originalExif = ExifInterface(java.io.ByteArrayInputStream(jpegBytes))
+        val orientation = originalExif.getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL
+        )
+        
+        var bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size) 
+            ?: return@runBlocking RangefinderMeasurement("", "", null, "", 0, "")
+        
+        val rotation = when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        
+        if (rotation != 0f) {
+            val matrix = android.graphics.Matrix()
+            matrix.postRotate(rotation)
+            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        }
+        
+        val labeledBitmap = addDistanceLabel(bitmap, distanceLabel)
+        FileOutputStream(imageFile).use { out ->
+            labeledBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+        }
+        
+        // Set EXIF to NORMAL since bitmap is now correctly oriented
+        val savedExif = ExifInterface(imageFile.absolutePath)
+        savedExif.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+        savedExif.saveAttributes()
         
         val measurement = RangefinderMeasurement(
             id, imageFile.absolutePath, distance, distanceLabel, 

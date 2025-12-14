@@ -26,7 +26,6 @@ import android.graphics.Rect
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.media.Image
 import android.media.ImageReader
 import android.util.Log
 import android.util.Size
@@ -640,7 +639,7 @@ class MainActivity : AppCompatActivity()
     }
 
     private fun configureTransform(viewWidth: Int, viewHeight: Int) {
-        val rotation = windowManager.defaultDisplay.rotation
+        val rotation = display?.rotation ?: 0
         val matrix = android.graphics.Matrix()
 
         val centerX = viewWidth / 2f
@@ -835,7 +834,7 @@ class MainActivity : AppCompatActivity()
                 CaptureRequest.FLASH_MODE_SINGLE
             )
 
-            val rotation = windowManager.defaultDisplay.rotation
+            val rotation = display?.rotation ?: 0
             val characteristics = cameraManager.getCameraCharacteristics(activeCameraId!!)
             val sensorOrientation =
                 characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
@@ -881,29 +880,14 @@ class MainActivity : AppCompatActivity()
 
     private val imageAvailableListener = ImageReader.OnImageAvailableListener { reader ->
         if (!isCapturing) {
-            val image = reader.acquireLatestImage()
-            image?.close()
+            reader.acquireLatestImage()?.close()
             return@OnImageAvailableListener
         }
 
-        val image = try {
-            reader.acquireLatestImage()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to acquire image from ImageReader: ${e.message}")
-            runOnUiThread {
-                isCapturing = false
-                saveButton.isEnabled = true
-                saveButton.text = "SAVE"
-                Toast.makeText(this@MainActivity, "Failed to acquire image", Toast.LENGTH_SHORT)
-                    .show()
-            }
-            return@OnImageAvailableListener
-        } ?: run {
+        val image = reader.acquireLatestImage() ?: run {
             Log.e(TAG, "ImageReader returned null image")
             runOnUiThread {
-                isCapturing = false
-                saveButton.isEnabled = true
-                saveButton.text = "SAVE"
+                resetSaveButton()
             }
             return@OnImageAvailableListener
         }
@@ -915,24 +899,8 @@ class MainActivity : AppCompatActivity()
 
             Log.d(TAG, "Image captured, size: ${bytes.size} bytes")
 
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-
-            if (bitmap == null) {
-                Log.e(TAG, "Failed to decode bitmap from image bytes")
-                runOnUiThread {
-                    isCapturing = false
-                    saveButton.isEnabled = true
-                    saveButton.text = "SAVE"
-                    Toast.makeText(this@MainActivity, "Failed to decode image", Toast.LENGTH_SHORT)
-                        .show()
-                }
-                return@OnImageAvailableListener
-            }
-
-            Log.d(TAG, "Bitmap decoded successfully: ${bitmap.width}x${bitmap.height}")
-
             val measurement = storage.saveMeasurement(
-                bitmap = bitmap,
+                jpegBytes = bytes,
                 distance = currentDistance,
                 distanceLabel = currentDistanceLabel,
                 cameraMode = ""
@@ -941,17 +909,13 @@ class MainActivity : AppCompatActivity()
             Log.d(TAG, "Measurement saved: ${measurement.id}, path: ${measurement.imagePath}")
 
             runOnUiThread {
-                isCapturing = false
-                saveButton.isEnabled = true
-                saveButton.text = "SAVE"
+                resetSaveButton()
                 Toast.makeText(this@MainActivity, "Measurement saved!", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error processing image: ${e.message}", e)
             runOnUiThread {
-                isCapturing = false
-                saveButton.isEnabled = true
-                saveButton.text = "SAVE"
+                resetSaveButton()
                 Toast.makeText(
                     this@MainActivity,
                     "Error saving image: ${e.message}",
