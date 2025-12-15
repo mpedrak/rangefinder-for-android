@@ -24,8 +24,6 @@ import kotlin.math.roundToInt
 import android.widget.LinearLayout
 import android.graphics.Rect
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.ImageReader
 import android.util.Log
 import android.util.Size
@@ -126,6 +124,7 @@ class MainActivity : AppCompatActivity()
         startBackgroundThread()
         if (cameraView.isAvailable)
         {
+            configureTransform(cameraView.width, cameraView.height)
             openCameraIfPermitted(cameraView.width, cameraView.height)
         }
     }
@@ -224,6 +223,21 @@ class MainActivity : AppCompatActivity()
         Log.d(TAG, "logicalBackId = $mainBackCameraId, ultraWideId = $ultraWideId, logicalBackPhysicalCount = $logicalBackPhysicalCount")
     }
 
+    private fun cameraHasAutoFocus(cameraId: String): Boolean {
+        return try {
+            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+            val afModes = characteristics.get(
+                CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES
+            ) ?: return false
+
+            afModes.any {
+                it != CaptureRequest.CONTROL_AF_MODE_OFF
+            }
+        } catch (e: CameraAccessException) {
+            return false
+        }
+    }
+
 
     private fun setupCameraModeButtons()
     {
@@ -246,6 +260,14 @@ class MainActivity : AppCompatActivity()
                 setOnClickListener {
                     currentMode = CameraMode.UW
                     currentCameraId = uwId
+
+                    if (!cameraHasAutoFocus(uwId)) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Ultrawide lens has fixed focus.\nMeasurement may be inaccurate.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
 
                     reopenCurrentCamera()
                 }
@@ -639,8 +661,10 @@ class MainActivity : AppCompatActivity()
     }
 
     private fun configureTransform(viewWidth: Int, viewHeight: Int) {
-        val rotation = display?.rotation ?: 0
+        val rotation = display?.rotation ?: Surface.ROTATION_0
         val matrix = android.graphics.Matrix()
+
+        cameraView.setTransform(matrix)
 
         val centerX = viewWidth / 2f
         val centerY = viewHeight / 2f
@@ -834,13 +858,18 @@ class MainActivity : AppCompatActivity()
                 CaptureRequest.FLASH_MODE_SINGLE
             )
 
-            val rotation = display?.rotation ?: 0
+            val rotation = display?.rotation ?: Surface.ROTATION_0
+
             val characteristics = cameraManager.getCameraCharacteristics(activeCameraId!!)
-            val sensorOrientation =
-                characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+//            val sensorOrientation =
+//                characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+            val jpegOrientation = getJpegOrientation(
+                characteristics,
+                rotation
+            )
             captureBuilder.set(
                 CaptureRequest.JPEG_ORIENTATION,
-                (sensorOrientation + rotation * 90 + 360) % 360
+                jpegOrientation
             )
 
             session.capture(
@@ -876,6 +905,27 @@ class MainActivity : AppCompatActivity()
         isCapturing = false
         saveButton.isEnabled = true
         saveButton.text = "SAVE"
+    }
+
+    private fun getJpegOrientation(
+        characteristics: CameraCharacteristics,
+        deviceRotation: Int
+    ): Int {
+        val sensorOrientation =
+            characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+
+        val deviceDegrees = when (deviceRotation) {
+            Surface.ROTATION_0 -> 0
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+
+        val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+        val sign = if (facing == CameraCharacteristics.LENS_FACING_FRONT) 1 else -1
+
+        return (sensorOrientation + sign * deviceDegrees + 360) % 360
     }
 
     private val imageAvailableListener = ImageReader.OnImageAvailableListener { reader ->
@@ -928,7 +978,12 @@ class MainActivity : AppCompatActivity()
     }
 
     private fun closeCamera() {
-        captureSession?.close()
+//        captureSession?.close()
+        captureSession?.apply {
+            stopRepeating()
+            abortCaptures()
+            close()
+        }
         captureSession = null
         imageReader?.close()
         imageReader = null
