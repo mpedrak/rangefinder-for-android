@@ -761,6 +761,18 @@ class MainActivity : AppCompatActivity()
             result: TotalCaptureResult
         ) {
             super.onCaptureCompleted(session, request, result)
+
+            val afState = result.get(CaptureResult.CONTROL_AF_STATE)
+            val shouldUpdateDistance = when (afState) {
+                CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED,
+                CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED -> true
+                else -> false
+            }
+
+            if (!shouldUpdateDistance) {
+                return
+            }
+
             val focusDistance = result.get(CaptureResult.LENS_FOCUS_DISTANCE)
             runOnUiThread {
                 if (focusDistance != null && focusDistance > 0) {
