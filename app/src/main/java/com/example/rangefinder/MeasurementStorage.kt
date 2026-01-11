@@ -120,6 +120,11 @@ class MeasurementStorage(private val context: Context) {
         dao.deleteById(id)
     }
 
+    fun deleteAllMeasurements() = runBlocking {
+        dao.getAllSync().forEach { File(it.imagePath).delete() }
+        dao.deleteAll()
+    }
+
     fun getMeasurementsSortedByDistance(ascending: Boolean = true) = runBlocking {
         (if (ascending) dao.getAllByDistanceAscending() else dao.getAllByDistanceDescending())
             .first().map { it.toRangefinderMeasurement() }

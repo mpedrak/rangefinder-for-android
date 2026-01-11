@@ -24,6 +24,7 @@ class SavedImagesActivity : AppCompatActivity() {
     private lateinit var emptyView: TextView
     private lateinit var sortSpinner: Spinner
     private lateinit var backButton: ImageButton
+    private lateinit var deleteButton: ImageButton
 
     private var currentSortMode = SortMode.DATE_NEWEST
 
@@ -48,7 +49,7 @@ class SavedImagesActivity : AppCompatActivity() {
     private fun hideStatusBar() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        controller.hide(WindowInsetsCompat.Type.statusBars())
+        controller.hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
         controller.systemBarsBehavior =
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
@@ -193,6 +194,27 @@ class SavedImagesActivity : AppCompatActivity() {
         rootLayout.addView(listView)
         rootLayout.addView(emptyView)
 
+        // DeleteAll floating button
+        deleteButton = ImageButton(context).apply {
+            id = View.generateViewId()
+            setBackgroundResource(R.drawable.button_circular_deleteall_enabletor)
+            setImageResource(R.drawable.outline_delete_24)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "Delete all"
+            val paddingValue = (12 * resources.displayMetrics.density).toInt()
+            setPadding(paddingValue, paddingValue, paddingValue, paddingValue)
+            layoutParams = FrameLayout.LayoutParams(
+                (48 * resources.displayMetrics.density).toInt(),
+                (48 * resources.displayMetrics.density).toInt()
+            ).apply {
+                gravity = Gravity.BOTTOM or Gravity.END
+                setMargins(0, 0, (16 * resources.displayMetrics.density).toInt(), (16 * resources.displayMetrics.density).toInt())
+            }
+            // activated only if there are measurements to delete
+            setOnClickListener { showDeleteAllConfirmation() }
+        }
+        rootLayout.addView(deleteButton)
+
         rootLayout.post {
             Log.d(
                 "SavedImagesActivity",
@@ -212,6 +234,7 @@ class SavedImagesActivity : AppCompatActivity() {
         Log.d(
             "SavedImagesActivity", "Total measurements loaded: ${allMeasurements.size}"
         )
+        deleteButton.isEnabled = allMeasurements.isNotEmpty()
 
         val measurements = when (currentSortMode) {
             SortMode.DATE_NEWEST -> storage.getMeasurementsSortedByDate(newestFirst = true)
@@ -310,11 +333,26 @@ class SavedImagesActivity : AppCompatActivity() {
             }.setNegativeButton("Cancel", null).show()
     }
 
+    private fun showDeleteAllConfirmation() {
+        AlertDialog.Builder(this).setTitle("Delete All Measurements")
+            .setMessage("Are you sure you want to delete all measurements?")
+            .setPositiveButton("Delete All") { _, _ ->
+                storage.deleteAllMeasurements()
+                loadMeasurements()
+            }.setNegativeButton("Cancel", null).show()
+    }
+
     private fun showFullImage(measurement: RangefinderMeasurement) {
         Log.d("SavedImagesActivity", "Showing full image: ${measurement.imagePath}")
 
         val bitmap = BitmapFactory.decodeFile(measurement.imagePath)
         val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.window?.let { window ->
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val controller = WindowInsetsControllerCompat(window, window.decorView)
+            controller.hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
         val context = this
         
         val layout = FrameLayout(context).apply {

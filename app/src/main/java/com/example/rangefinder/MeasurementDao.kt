@@ -39,6 +39,9 @@ interface MeasurementDao {
     
     @Query("DELETE FROM measurements WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("DELETE FROM measurements")
+    suspend fun deleteAll()
     
     @Query("SELECT COUNT(*) FROM measurements")
     suspend fun getCount(): Int
