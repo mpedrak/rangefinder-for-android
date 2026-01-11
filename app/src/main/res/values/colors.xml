@@ -16,6 +16,7 @@
     <!-- Accent Colors -->
     <color name="accent_distance">#00E676</color>
     <color name="accent_delete">#FF5252</color>
+    <color name="accent_camera_zoom">#2196F3</color>
     
     <!-- Overlay Colors -->
     <color name="overlay_semi_transparent">#80000000</color>

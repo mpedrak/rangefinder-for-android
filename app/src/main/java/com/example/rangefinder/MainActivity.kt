@@ -14,14 +14,17 @@ import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import android.graphics.Typeface
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import kotlin.math.roundToInt
 import android.widget.LinearLayout
+import android.widget.FrameLayout
 import android.graphics.Rect
 import android.content.Intent
 import android.media.ImageReader
@@ -39,9 +42,9 @@ class MainActivity : AppCompatActivity()
         private const val REQUEST_CAMERA_PERMISSION = 1001
     }
 
-    private lateinit var flashButton: Button
+    private lateinit var flashButton: ImageButton
     private lateinit var saveButton: Button
-    private lateinit var viewSavedButton: Button
+    private lateinit var viewSavedButton: ImageButton
     private var isFlashOn = false
     private lateinit var cameraView: AutoFitTextureView
     private lateinit var distanceTextView: TextView
@@ -63,9 +66,12 @@ class MainActivity : AppCompatActivity()
     private enum class CameraMode { WIDE, UW, ZOOM }
 
     private var currentMode: CameraMode = CameraMode.WIDE
+    private var currentZoomFactor: Float = 1.0f
+    private val cameraButtons = mutableMapOf<CameraMode, Button>()
+    private val zoomButtons = mutableMapOf<Float, Button>()
     private var logicalBackPhysicalCount: Int = 1
     private var currentDistance: Float? = null
-    private var currentDistanceLabel: String = "DISTANCE: -"
+    private var currentDistanceLabel: String = "Distance: -"
     private lateinit var storage: MeasurementStorage
     private var imageReader: ImageReader? = null
 
@@ -92,13 +98,27 @@ class MainActivity : AppCompatActivity()
 
         detectBackCameras()
 
-        currentMode = CameraMode.WIDE
-        zoomButtonsContainer.visibility = View.GONE
+        // Restore state if available
+        if (savedInstanceState != null) {
+            val savedMode = savedInstanceState.getInt("currentMode", CameraMode.WIDE.ordinal)
+            currentMode = CameraMode.values()[savedMode]
+            currentZoomFactor = savedInstanceState.getFloat("currentZoomFactor", 1.0f)
+            isFlashOn = savedInstanceState.getBoolean("isFlashOn", false)
+        } else {
+            currentMode = CameraMode.WIDE
+            currentZoomFactor = 1.0f
+            isFlashOn = false
+        }
+        
+        zoomButtonsContainer.visibility = if (currentMode == CameraMode.ZOOM && logicalBackPhysicalCount >= 2) View.VISIBLE else View.GONE
         currentCameraId = mainBackCameraId ?: ultraWideId
-
 
         setupCameraModeButtons()
         setupZoomPresetButtons()
+        updateCameraButtonHighlighting()
+        updateZoomButtonHighlighting()
+        
+        // Setup window insets for navigation bar
 
         cameraView.surfaceTextureListener = surfaceTextureListener
         cameraView.setOnClickListener { triggerCenterAutoFocus() }
@@ -107,7 +127,21 @@ class MainActivity : AppCompatActivity()
         viewSavedButton.setOnClickListener {
             startActivity(Intent(this, SavedImagesActivity::class.java))
         }
+        
+        // Initialize flash button state
+        flashButton.isSelected = isFlashOn
+        // Update flashlight icon
+        val flashIconRes = if (isFlashOn) R.drawable.outline_flashlight_on_24 else R.drawable.outline_flashlight_off_24
+        flashButton.setImageResource(flashIconRes)
     }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt("currentMode", currentMode.ordinal)
+        outState.putFloat("currentZoomFactor", currentZoomFactor)
+        outState.putBoolean("isFlashOn", isFlashOn)
+    }
+
 
     private fun hideStatusBar()
     {
@@ -248,18 +282,23 @@ class MainActivity : AppCompatActivity()
         ultraWideId?.let { uwId ->
             val uwButton = Button(this).apply {
                 text = "UW"
-                textSize = 17f
+                textSize = 19.5f
                 setTextColor(color(R.color.text_primary))
-                setBackgroundColor(color(R.color.overlay_button_background))
-                setPadding(20, 20, 20, 20)
-                minWidth = 150
-                minHeight = 0
-                minimumWidth = 150
-                minimumHeight = 0
+                background = ContextCompat.getDrawable(this@MainActivity, R.drawable.button_secondary)
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                letterSpacing = 0.01f
+                setPadding(26, 16, 26, 16)
+                minWidth = 195
+                minHeight = 57
+                minimumWidth = 195
+                minimumHeight = 57
+                elevation = 4f
 
                 setOnClickListener {
                     currentMode = CameraMode.UW
                     currentCameraId = uwId
+                    currentZoomFactor = 1.0f
+                    updateZoomButtonHighlighting()
 
                     if (!cameraHasAutoFocus(uwId)) {
                         Toast.makeText(
@@ -270,6 +309,7 @@ class MainActivity : AppCompatActivity()
                     }
 
                     reopenCurrentCamera()
+                    updateCameraButtonHighlighting()
                 }
             }
             val lp2 = LinearLayout.LayoutParams(
@@ -280,24 +320,29 @@ class MainActivity : AppCompatActivity()
             }
             uwButton.layoutParams = lp2
             cameraButtonsContainer.addView(uwButton)
+            cameraButtons[CameraMode.UW] = uwButton
         }
 
         val wideButton = Button(this).apply {
             text = "W"
-            textSize = 17f
+            textSize = 19.5f
             setTextColor(color(R.color.text_primary))
-            setBackgroundColor(color(R.color.overlay_button_background))
-            setPadding(20, 20, 20, 20)
-            minWidth = 150
-            minHeight = 0
-            minimumWidth = 150
-            minimumHeight = 0
+            background = ContextCompat.getDrawable(this@MainActivity, R.drawable.button_circular)
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            letterSpacing = 0.01f
+            setPadding(26, 16, 26, 16)
+            minWidth = 195
+            minHeight = 57
+            minimumWidth = 195
+            minimumHeight = 57
+            elevation = 4f
 
             setOnClickListener {
                 currentMode = CameraMode.WIDE
                 currentCameraId = mainBackCameraId
                 reopenCurrentCamera()
                 resetZoomOnActiveCamera()
+                updateCameraButtonHighlighting()
             }
         }
         val lp3 = LinearLayout.LayoutParams(
@@ -308,26 +353,33 @@ class MainActivity : AppCompatActivity()
         }
         wideButton.layoutParams = lp3
         cameraButtonsContainer.addView(wideButton)
+        cameraButtons[CameraMode.WIDE] = wideButton
 
 
         if (mainBackCameraId != null && logicalBackPhysicalCount >= 2)
         {
             val ZOOMButton = Button(this).apply {
                 text = "ZOOM"
-                textSize = 17f
+                textSize = 19.5f
                 setTextColor(color(R.color.text_primary))
-                setBackgroundColor(color(R.color.overlay_button_background))
-                setPadding(20, 20, 20, 20)
-                minWidth = 150
-                minHeight = 0
-                minimumWidth = 150
-                minimumHeight = 0
+                background = ContextCompat.getDrawable(this@MainActivity, R.drawable.button_secondary)
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                letterSpacing = 0.01f
+                setPadding(26, 16, 26, 16)
+                minWidth = 195
+                minHeight = 57
+                minimumWidth = 195
+                minimumHeight = 57
+                elevation = 4f
 
                 setOnClickListener {
                     currentMode = CameraMode.ZOOM
                     currentCameraId = mainBackCameraId
-
+                    // Preserve zoom factor when switching to ZOOM mode
+                    val previousZoom = currentZoomFactor
                     reopenCurrentCamera()
+                    updateCameraButtonHighlighting()
+                    // Restore zoom after camera reopens (handled in onConfigured)
                 }
             }
 
@@ -340,6 +392,7 @@ class MainActivity : AppCompatActivity()
             }
             ZOOMButton.layoutParams = lp
             cameraButtonsContainer.addView(ZOOMButton)
+            cameraButtons[CameraMode.ZOOM] = ZOOMButton
         }
     }
 
@@ -357,6 +410,13 @@ class MainActivity : AppCompatActivity()
         if (cameraView.isAvailable)
         {
             openCameraIfPermitted(cameraView.width, cameraView.height)
+        }
+        // Restore zoom state after camera reopens
+        if (currentMode == CameraMode.ZOOM && currentZoomFactor != 1.0f) {
+            // Zoom will be restored when camera session is created
+        } else if (currentMode != CameraMode.ZOOM) {
+            currentZoomFactor = 1.0f
+            updateZoomButtonHighlighting()
         }
     }
 
@@ -376,14 +436,17 @@ class MainActivity : AppCompatActivity()
         for ((factor, label) in presets) {
             val button = Button(this).apply {
                 text = label
-                textSize = 17f
+                textSize = 15f
                 setTextColor(color(R.color.text_primary))
-                setBackgroundColor(color(R.color.overlay_zoom_button_background))
-                setPadding(20, 20, 20, 20)
+                background = ContextCompat.getDrawable(this@MainActivity, R.drawable.button_secondary)
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                letterSpacing = 0.01f
+                setPadding(20, 12, 20, 12)
                 minWidth = 150
-                minHeight = 0
+                minHeight = 44
                 minimumWidth = 150
-                minimumHeight = 0
+                minimumHeight = 44
+                elevation = 4f
 
                 setOnClickListener {
                     when (currentMode) {
@@ -391,6 +454,7 @@ class MainActivity : AppCompatActivity()
                         CameraMode.UW -> resetZoomOnActiveCamera()
                         CameraMode.WIDE -> setZoomOnActiveCamera(1.0f)
                     }
+                    updateZoomButtonHighlighting()
                 }
             }
 
@@ -404,9 +468,32 @@ class MainActivity : AppCompatActivity()
             button.layoutParams = lp
 
             zoomButtonsContainer.addView(button)
+            zoomButtons[factor] = button
         }
     }
 
+
+    private fun updateCameraButtonHighlighting() {
+        cameraButtons.forEach { (mode, button) ->
+            val isActive = mode == currentMode
+            button.background = ContextCompat.getDrawable(
+                this,
+                if (isActive) R.drawable.button_camera_zoom_active else R.drawable.button_secondary
+            )
+            button.setTextColor(if (isActive) color(R.color.background_black) else color(R.color.text_primary))
+        }
+    }
+
+    private fun updateZoomButtonHighlighting() {
+        zoomButtons.forEach { (factor, button) ->
+            val isActive = currentZoomFactor == factor && currentZoomFactor != 1.0f
+            button.background = ContextCompat.getDrawable(
+                this,
+                if (isActive) R.drawable.button_camera_zoom_active else R.drawable.button_secondary
+            )
+            button.setTextColor(if (isActive) color(R.color.background_black) else color(R.color.text_primary))
+        }
+    }
 
     private fun setZoomOnActiveCamera(zoomFactor: Float)
     {
@@ -415,6 +502,7 @@ class MainActivity : AppCompatActivity()
         val sensorRect = sensorActiveArray ?: return
 
         val z = zoomFactor.coerceAtLeast(1.0f)
+        currentZoomFactor = zoomFactor
 
         val centerX = sensorRect.centerX()
         val centerY = sensorRect.centerY()
@@ -431,6 +519,7 @@ class MainActivity : AppCompatActivity()
 
         try {
             session.setRepeatingRequest(builder.build(), captureCallback, backgroundHandler)
+            updateZoomButtonHighlighting()
         } catch (e: CameraAccessException) {
             Log.e(TAG, "setZoomOnActiveCamera error: ${e.message}")
         }
@@ -439,6 +528,7 @@ class MainActivity : AppCompatActivity()
 
     private fun resetZoomOnActiveCamera()
     {
+        currentZoomFactor = 1.0f
         val session = captureSession ?: return
         val builder = previewRequestBuilder ?: return
         val sensorRect = sensorActiveArray ?: return
@@ -447,6 +537,7 @@ class MainActivity : AppCompatActivity()
 
         try {
             session.setRepeatingRequest(builder.build(), captureCallback, backgroundHandler)
+            updateZoomButtonHighlighting()
         } catch (e: CameraAccessException) {
             Log.e(TAG, "resetZoomOnActiveCamera error: ${e.message}")
         }
@@ -605,6 +696,13 @@ class MainActivity : AppCompatActivity()
                 CaptureRequest.CONTROL_AF_MODE,
                 CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
             )
+            
+            // Restore flash state
+            previewRequestBuilder?.set(
+                CaptureRequest.FLASH_MODE,
+                if (isFlashOn) CaptureRequest.FLASH_MODE_TORCH
+                else CaptureRequest.FLASH_MODE_OFF
+            )
 
             val outputConfigs = mutableListOf<OutputConfiguration>()
             outputConfigs.add(OutputConfiguration(surface))
@@ -615,15 +713,25 @@ class MainActivity : AppCompatActivity()
                 outputConfigs,
                 ContextCompat.getMainExecutor(this),
                 object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(session: CameraCaptureSession) {
-                        captureSession = session
-                        val previewRequest = previewRequestBuilder!!.build()
-                        session.setRepeatingRequest(
-                            previewRequest,
-                            captureCallback,
-                            backgroundHandler
-                        )
+                override fun onConfigured(session: CameraCaptureSession) {
+                    captureSession = session
+                    // Ensure flash state is set before building the request
+                    previewRequestBuilder?.set(
+                        CaptureRequest.FLASH_MODE,
+                        if (isFlashOn) CaptureRequest.FLASH_MODE_TORCH
+                        else CaptureRequest.FLASH_MODE_OFF
+                    )
+                    val previewRequest = previewRequestBuilder!!.build()
+                    session.setRepeatingRequest(
+                        previewRequest,
+                        captureCallback,
+                        backgroundHandler
+                    )
+                    // Restore zoom state after session is configured
+                    if (currentMode == CameraMode.ZOOM && currentZoomFactor != 1.0f) {
+                        setZoomOnActiveCamera(currentZoomFactor)
                     }
+                }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
                         distanceTextView.text = "Couldn't configure camera view"
@@ -778,11 +886,11 @@ class MainActivity : AppCompatActivity()
                 if (focusDistance != null && focusDistance > 0) {
                     val distance = 1f / focusDistance
                     currentDistance = distance
-                    currentDistanceLabel = String.format("DISTANCE: %.2f m", distance)
+                    currentDistanceLabel = String.format("Distance: %.2f m", distance)
                     distanceTextView.text = currentDistanceLabel
                 } else {
                     currentDistance = null
-                    currentDistanceLabel = "DISTANCE: ∞"
+                    currentDistanceLabel = "Distance: ∞"
                     distanceTextView.text = currentDistanceLabel
                 }
             }
@@ -814,7 +922,10 @@ class MainActivity : AppCompatActivity()
                 backgroundHandler
             )
 
-            flashButton.text = if (isFlashOn) "FLASHLIGHT ON" else "FLASHLIGHT OFF"
+            flashButton.isSelected = isFlashOn
+            // Update flashlight icon
+            val flashIconRes = if (isFlashOn) R.drawable.outline_flashlight_on_24 else R.drawable.outline_flashlight_off_24
+            flashButton.setImageResource(flashIconRes)
         } catch (e: CameraAccessException) {
             Log.e(TAG, "toggleFlash error: ${e.message}")
         }
@@ -916,7 +1027,7 @@ class MainActivity : AppCompatActivity()
     private fun resetSaveButton() {
         isCapturing = false
         saveButton.isEnabled = true
-        saveButton.text = "SAVE"
+        saveButton.text = "save"
     }
 
     private fun getJpegOrientation(

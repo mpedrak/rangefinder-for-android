@@ -9,6 +9,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import android.widget.ImageButton
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
@@ -22,7 +23,7 @@ class SavedImagesActivity : AppCompatActivity() {
     private lateinit var listView: ListView
     private lateinit var emptyView: TextView
     private lateinit var sortSpinner: Spinner
-    private lateinit var backButton: Button
+    private lateinit var backButton: ImageButton
 
     private var currentSortMode = SortMode.DATE_NEWEST
 
@@ -55,66 +56,78 @@ class SavedImagesActivity : AppCompatActivity() {
     private fun setupUI() {
         val context = this
         
-        val rootLayout = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(context.color(R.color.background_dark))
+        val rootLayout = FrameLayout(context).apply {
+            setBackgroundColor(context.color(R.color.background_black))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setPadding(0, 60, 0, 0)
         }
 
-        val headerLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        val topBarLayout = RelativeLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(48, 24, 48, 24)
+                topMargin = (16 * resources.displayMetrics.density).toInt()
+                leftMargin = (16 * resources.displayMetrics.density).toInt()
+                rightMargin = (16 * resources.displayMetrics.density).toInt()
             }
         }
 
-        backButton = Button(context).apply {
-            text = "BACK"
-            textSize = 14f
-            setTextColor(context.color(R.color.text_primary))
-            setBackgroundColor(context.color(R.color.background_button))
-            setPadding(48, 36, 48, 36)
+        backButton = ImageButton(context).apply {
+            id = View.generateViewId()
+            setBackgroundResource(R.drawable.button_circular)
+            setImageResource(R.drawable.baseline_arrow_back_24)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "Back"
+            val paddingValue = (12 * resources.displayMetrics.density).toInt()
+            setPadding(paddingValue, paddingValue, paddingValue, paddingValue)
+            layoutParams = RelativeLayout.LayoutParams(
+                (48 * resources.displayMetrics.density).toInt(),
+                (48 * resources.displayMetrics.density).toInt()
+            ).apply {
+                addRule(RelativeLayout.ALIGN_PARENT_START)
+                addRule(RelativeLayout.CENTER_VERTICAL)
+            }
             setOnClickListener { finish() }
         }
-        headerLayout.addView(backButton)
+        topBarLayout.addView(backButton)
 
+        // Title text at top - truly centered (matching distance text style)
         val titleView = TextView(context).apply {
-            text = "SAVED MEASUREMENTS"
+            text = "Saved measurements"
             textSize = 20f
             setTextColor(context.color(R.color.text_primary))
             typeface = android.graphics.Typeface.create(
                 android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD
             )
-            layoutParams = LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            layoutParams = RelativeLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(48, 0, 0, 0)
+                addRule(RelativeLayout.CENTER_IN_PARENT)
             }
         }
-        headerLayout.addView(titleView)
-
-        rootLayout.addView(headerLayout)
+        topBarLayout.addView(titleView)
+        rootLayout.addView(topBarLayout)
 
         val sortLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL
             ).apply {
-                setMargins(48, 24, 48, 48)
+                topMargin = (80 * resources.displayMetrics.density).toInt()
+                leftMargin = (48 * resources.displayMetrics.density).toInt()
+                rightMargin = (48 * resources.displayMetrics.density).toInt()
             }
         }
 
         val sortLabel = TextView(context).apply {
             text = "Sort by: "
             textSize = 16f
-            setTextColor(context.color(R.color.text_secondary))
+            setTextColor(context.color(R.color.text_primary))
         }
         sortLayout.addView(sortLabel)
 
@@ -122,7 +135,7 @@ class SavedImagesActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
             )
-            setBackgroundColor(context.color(R.color.background_button))
+            setBackgroundColor(android.graphics.Color.WHITE)
             setPadding(36, 24, 36, 24)
         }
 
@@ -146,9 +159,15 @@ class SavedImagesActivity : AppCompatActivity() {
         rootLayout.addView(sortLayout)
 
         listView = ListView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-            )
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ).apply {
+                topMargin = (140 * resources.displayMetrics.density).toInt()
+                leftMargin = (24 * resources.displayMetrics.density).toInt()
+                rightMargin = (24 * resources.displayMetrics.density).toInt()
+                bottomMargin = (24 * resources.displayMetrics.density).toInt()
+            }
             divider = null
             dividerHeight = 24
             setBackgroundColor(context.color(R.color.transparent))
@@ -158,13 +177,14 @@ class SavedImagesActivity : AppCompatActivity() {
 
         emptyView = TextView(context).apply {
             text =
-                "No saved measurements yet.\n\nTap the SAVE button in the camera view\nto capture a distance measurement."
+                "No saved measurements yet.\n\nTap the save button in the camera view\nto capture a distance measurement."
             textSize = 16f
             setTextColor(context.color(R.color.text_quaternary))
             gravity = Gravity.CENTER
             visibility = View.GONE
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
             ).apply {
                 setMargins(96, 192, 96, 192)
             }
